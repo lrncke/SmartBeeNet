@@ -89,21 +89,18 @@ void setup() {
   }
 
     
+    float weight = 0;
+    for (int i = 0; i < 5; i++) {
+        LoadCell.update();
+        weight += LoadCell.getData();
+        delay(100);
+    }
+    weight /= 5;
 
-  
+    Serial.print("\n===Gelesenes Gewicht:  %d ===", weight);
 
-    //warten, bis Werte vorhanden sind
-  while (!LoadCell.update())
-  {
-    Serial.print("\n\n===Warten auf Werte des HX711===\n\n")
   }
-
-  // Gewicht aus HX711 auslesen
-    float weight =  = LoadCell.getData();
-    Serial.print("\n\n===Ausgelesenes Gewicht: ");
-    Serial.print(weight);
-    Serial.print(" ===\n\n");
-  
+    
   
   // JSON String bauen
   String payload = "{";
