@@ -10,6 +10,9 @@ int stock_id = 1;
 #define DHTTYPE DHT11     // Sensor Typ
 DHT dht(DHTPIN, DHTTYPE);
 
+// Speichert Tare-Offset im RTC-RAM (überlebt Deep Sleep!)
+RTC_DATA_ATTR long savedOffset = 0;
+
 // --- HX711 Setup ---
 const int HX711_dout = 22; // HX711 Daten Pin
 const int HX711_sck = 23;  // HX711 Clock Pin
@@ -55,20 +58,35 @@ void connectMQTT() {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); // Warte auf seriellen Monitor
+  delay(200); // Warte auf seriellen Monitor
 
-  // Überprüfen, warum ESP32 aus Deep Sleep erwacht ist
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
-    Serial.println("ESP32 ist aus Deep Sleep erwacht.");
+  esp_sleep_wakeup_cause_t wakeReason = esp_sleep_get_wakeup_cause();
+  Serial.print("Wakeup-Code: ");
+  Serial.println((int)wakeReason);
+
+  if (wakeReason == ESP_SLEEP_WAKEUP_TIMER) {
+    Serial.println("✅ Deep Sleep Wake");
   } else {
-    Serial.println("Normaler Start.");
+    Serial.println("❌ Normaler Start");
   }
 
   // Sensoren initialisieren
   dht.begin();
   LoadCell.begin();
-  LoadCell.start(2000, true); // 2 Sekunden Stabilisierung + Tare
-  LoadCell.setCalFactor(696.0); // Kalibrierwert anpassen falls nötig
+  LoadCell.start(2000, false); // nur stabilisieren, kein Tare
+  LoadCell.setCalFactor(224.92);  // deinen Kalibrierwert einsetzen
+
+  if (wakeReason != ESP_SLEEP_WAKEUP_TIMER) {
+    Serial.println("→ Tare (nur bei Kaltstart)");
+    LoadCell.tare(); // nullen
+    savedOffset = LoadCell.getTareOffset();
+    Serial.print("Offset gespeichert: ");
+    Serial.println(savedOffset);
+  } else {
+    LoadCell.setTareOffset(savedOffset);
+    Serial.print("Offset wiederhergestellt: ");
+    Serial.println(savedOffset);
+  }
 
   // WLAN und MQTT starten
   connectWiFi();
@@ -86,11 +104,17 @@ void setup() {
     Serial.println(" °C");
   }
 
-  // Gewicht aus HX711 auslesen
-  LoadCell.update(); // Daten aktualisieren
-  float weight = LoadCell.getData();
+  // Gewicht messen
+  float weight = -999;
+  for (int i = 0; i < 40; ++i) {
+    if (LoadCell.update()) {
+      weight = LoadCell.getData();
+      break;
+    }
+    delay(2);
+  }
   Serial.print("Gewicht: ");
-  Serial.println(weight);
+  Serial.println(weight, 2);
 
   // JSON String bauen
   String payload = "{";
@@ -112,10 +136,10 @@ void setup() {
   client.loop();
   delay(500);
 
-  Serial.println("ESP32 geht jetzt in den Deep Sleep für 60 Sekunden...");
-
-  // Deep Sleep konfigurieren: 60 Sekunden (60 * 1.000.000 Mikrosekunden)
-  esp_sleep_enable_timer_wakeup(60 * 1000000);
+  // Deep Sleep für 5 Sekunden
+  Serial.println("→ Gehe jetzt in Deep Sleep (5 s)");
+  delay(1000);
+  esp_sleep_enable_timer_wakeup(5 * 1000000ULL);
   esp_deep_sleep_start();
 }
 
