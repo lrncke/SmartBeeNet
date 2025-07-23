@@ -33,6 +33,7 @@ float weight1 = -999;
 float weight2 = -999;
 float weight3 = -999;
 float weight4 = -999;
+float weight_ges = 0;
   //=============================================
 
 //HX711 constructor:
@@ -58,6 +59,9 @@ const char* mqttTopic = "bienen/stock/1";
 // Funktion zur WLAN Verbindung
 void connectWiFi() {
   Serial.print("Connecting to WiFi");
+  WiFi.disconnect(true);
+  delay(1000);
+
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
@@ -105,17 +109,21 @@ void setup() {
 //=====================================
 
 //=====================================
-  LoadCell.start(2000, false); // nur stabilisieren, kein Tare
-  LoadCell2.start(2000, false);
-  LoadCell3.start(2000, false);
-  LoadCell4.start(2000, false);
+LoadCell.start(2000, false);
+LoadCell2.start(2000, false);
+LoadCell3.start(2000, false);
+LoadCell4.start(2000, false);
+
+
+
 //=====================================
 
 //=====================================
-  LoadCell.setCalFactor(224.92);  // deinen Kalibrierwert einsetzen
+  LoadCell.setCalFactor(104.27);  // deinen Kalibrierwert einsetzen
   LoadCell2.setCalFactor(103.01);  // deinen Kalibrierwert einsetzen
   LoadCell3.setCalFactor(-95.95);  // deinen Kalibrierwert einsetzen
   LoadCell4.setCalFactor(105.65);  // deinen Kalibrierwert einsetzen
+
 //=====================================
 
 
@@ -146,6 +154,11 @@ void setup() {
 
   } else {
 
+    LoadCell.tare(); // nullen
+    LoadCell2.tare();
+    LoadCell3.tare();
+    LoadCell4.tare();
+
     //===========================================
     LoadCell.setTareOffset(savedOffset1);
     LoadCell2.setTareOffset(savedOffset2);
@@ -175,37 +188,53 @@ void setup() {
   }
 
   // Gewicht messen
-  
+unsigned long startTime = millis();
+bool done1 = false, done2 = false, done3 = false, done4 = false;
 
-
-  for (int i = 0; i < 40; ++i) {
-    if (LoadCell.update()) {
-      weight1 = LoadCell.getData();
-      weight2 = LoadCell2.getData();
-      weight3 = LoadCell3.getData();
-      weight4 = LoadCell4.getData();
-      break;
-    }
-    delay(2);
+while (millis() - startTime < 1000) { // max. 1 Sekunde warten
+  if (!done1 && LoadCell.update()) {
+    weight1 = LoadCell.getData();
+    done1 = true;
   }
+  if (!done2 && LoadCell2.update()) {
+    weight2 = LoadCell2.getData();
+    done2 = true;
+  }
+  if (!done3 && LoadCell3.update()) {
+    weight3 = LoadCell3.getData();
+    done3 = true;
+  }
+  if (!done4 && LoadCell4.update()) {
+    weight4 = LoadCell4.getData();
+    done4 = true;
+  }
+
+  if (done1 && done2 && done3 && done4) break;
+  delay(2);
+}
+
+
+
   
   printWeights();
 
+  weight_ges = weight1 + weight2 + weight3 + weight4;
+
   // JSON String bauen
-  /*String payload = "{";
+  String payload = "{";
   payload += "\"stock_id\":" + String(stock_id) + ",";
   payload += "\"temperature\":" + String(temperature, 2) + ",";
-  payload += "\"weight\":" + String(weight, 2);
+  payload += "\"weight\":" + String(weight_ges, 2);
   payload += "}";
 
   Serial.print("Sende MQTT Payload: ");
-  Serial.println(payload);*/
+  Serial.println(payload);
 
   // MQTT Nachricht senden
   if (!client.connected()) {
     connectMQTT();
   }
-  //client.publish(mqttTopic, payload.c_str());
+  client.publish(mqttTopic, payload.c_str());
 
   // MQTT Loop für kurze Zeit aufrufen um senden sicherzustellen
   client.loop();
@@ -224,7 +253,7 @@ void loop() {
 
 void printOffsets()
 {
-    Serial.print("Wert1:  ");Serial.println(savedOffset1);
+    Serial.print("\nWert1:  ");Serial.println(savedOffset1);
     Serial.print("Wert2:  ");Serial.println(savedOffset2);
     Serial.print("Wert3:  ");Serial.println(savedOffset3);
     Serial.print("Wert4:  ");Serial.println(savedOffset4);
@@ -233,5 +262,5 @@ void printOffsets()
 void printWeights()
 {
   Serial.println("Aktualisierte Gewichte:");
-  Serial.print("Zelle1:  "); Serial.print(weight1); Serial.print("Zelle2:  "); Serial.print(weight2); Serial.print("Zelle3:  "); Serial.print(weight3); Serial.print("Zelle4:  "); Serial.println(weight4);
+  Serial.print("Zelle1: "); Serial.print(weight1); Serial.print("  Zelle2: "); Serial.print(weight2); Serial.print("  Zelle3: "); Serial.print(weight3); Serial.print("  Zelle4: "); Serial.println(weight4);
 }
