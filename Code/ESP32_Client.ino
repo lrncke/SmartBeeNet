@@ -59,7 +59,7 @@ const char* mqttTopic = "bienen/stock/1";
 // Funktion zur WLAN Verbindung
 void connectWiFi() {
   Serial.print("Connecting to WiFi");
-  WiFi.disconnect(true);
+  WiFi.disconnect();
   delay(1000);
 
   WiFi.begin(ssid, pass);
